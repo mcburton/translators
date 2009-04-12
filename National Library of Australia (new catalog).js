@@ -13,42 +13,48 @@
 
 function detectWeb(doc, url) {
     if (url.match("/Record/[0-9]+")) {
-        var format = Zotero.Utilities.cleanString(doc.getElementById("myformat").textContent);
+        var format = doc.getElementById("myformat").textContent;
+		return computeFormat(format);
+        
+	} else if (url.match ("/Search/Home") && doc.getElementById ("resultItemLine1")) {
+		return "multiple";
+	}
+}
 
-        if (format == "Audio") {
-            return "audioRecording";
-        }
-        else if (format == "Book") {
-            return "book";
-        }
-        else if (format == "Journal/Newspaper") {
-            return "journalArticle";
-        }
-        else if (format == "Manuscript") {
-            return "manuscript";
-        }
-        else if (format == "Map") {
-            return "map";
-        }
-        else if (format == "Music") {
-            return "audioRecording";
-        }
-        else if (format == "Online") {
-            return "webpage";
-        }
-        else if (format == "Picture") {
-            return "artwork";
-        }
-        else if (format == "Video") {
-            return "videoRecording";
-        }
-        else {
-            return "book";
-        }
-    } else if (url.match ("/Search/Home") &&
-               doc.getElementById ("resultItemLine1")) {
-        return "multiple";
+function computeFormat(format){
+	format = Zotero.Utilities.trimInternal(format);
+	
+	if (format == "Audio") {
+        return "audioRecording";
     }
+    else if (format == "Book") {
+        return "book";
+    }
+    else if (format == "Journal/Newspaper") {
+        return "journalArticle";
+    }
+    else if (format == "Manuscript") {
+        return "manuscript";
+    }
+    else if (format == "Map") {
+        return "map";
+    }
+    else if (format == "Music") {
+        return "audioRecording";
+    }
+    else if (format == "Online") {
+        return "webpage";
+    }
+    else if (format == "Picture") {
+        return "artwork";
+    }
+    else if (format == "Video") {
+        return "videoRecording";
+    }
+    else {
+        return "book";
+    }
+
 }
 
 function as_array(obj) {
@@ -61,7 +67,7 @@ function as_array(obj) {
 
 
 function load_item(responseText, requestObject, format) {
-    var metadata = JSON.parse(Zotero.Utilities.cleanString(responseText));
+    var metadata = eval("(" + Zotero.Utilities.cleanString(responseText) + ")");
     var newItem = new Zotero.Item(format);
 
     /* load in our authors */
@@ -95,28 +101,38 @@ function load_item(responseText, requestObject, format) {
 }
 
 function doWeb(doc, url) {
-    format = detectWeb(doc, url);
+    var format = detectWeb(doc, url);
 
-    items = [];
+    var items = [];
     if (format == "multiple") {
         for (var url in Zotero.selectItems((Zotero.Utilities.getItemArray
                                             (doc, doc, "/Record/[0-9]+")))) {
-            items.push(url);
+	
+			var bibid = url.match("^.*\/Record/([0-9]+)")[1];
+			// //div[./div/a/@href = '/Record/1366284?lookfor=test&offset=1&max=26128']/div[@id = 'resultItemLine3']/span/text()
+			var xpath = "//div[contains(./div/a/@href, '"+bibid+"')]/div[@id = 'resultItemLine3']/span/text()";
+			var nlaFormat = doc.evaluate(xpath, doc, null, XPathResult.ANY_TYPE, null).iterateNext().textContent;
+			Zotero.debug("nlaFormat"+nlaFormat);
+            items.push({bibid:bibid, format:computeFormat(nlaFormat)});
         }
     } else {
-        items.push(url);
+		var bibid = url.match("^.*\/Record/([0-9]+)")[1];
+        items.push({bibid:bibid, format:format});
     }
 
     if (items.length > 0) {
+	/*
         Zotero.Utilities.processDocuments(items, function(onedoc) {
                 handleDocument(onedoc);
             }, function() { Zotero.done(); });
-
+	
         Zotero.wait();
+		*/
+		handleDocuments(items);
     }
 }
 
-
+/*
 function handleDocument(doc) {
     bibid = doc.location.href.match("^.*\/Record/([0-9]+)")[1];
     format = detectWeb(doc, doc.location.href);
@@ -126,4 +142,16 @@ function handleDocument(doc) {
                                 function(text, obj) {
                                     load_item(text, obj, format);
                                 });
+}
+*/
+function handleDocuments(items) {
+	var urls = [];
+	for (var i in items) {
+    	var format = items[i].format;
+		urls.push("http://catalogue.nla.gov.au/Record/" + items[i].bibid + "/Export?style=zotero");
+    }
+	Zotero.Utilities.HTTP.doGet(urls, 
+		function(text, obj) { load_item(text, obj, format);},
+		function(){ Zotero.done();});
+	Zotero.wait();
 }
